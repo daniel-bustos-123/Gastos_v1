@@ -322,12 +322,31 @@ function setSyncStatus(msg, loading){
   el.classList.toggle('loading', !!loading);
 }
 
+// Apps Script no permite headers CORS en fetch normal, así que usamos JSONP
+function jsonp(url){
+  return new Promise((resolve, reject)=>{
+    const cbName = 'cb_' + Date.now() + '_' + Math.floor(Math.random()*10000);
+    const script = document.createElement('script');
+    window[cbName] = (data)=>{
+      resolve(data);
+      delete window[cbName];
+      script.remove();
+    };
+    script.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cbName;
+    script.onerror = ()=>{
+      reject(new Error('JSONP falló'));
+      delete window[cbName];
+      script.remove();
+    };
+    document.body.appendChild(script);
+  });
+}
+
 // ---------- LOAD FROM SHEET (source of truth) ----------
 async function loadEntriesFromSheet(){
   setSyncStatus('sincronizando...', true);
   try{
-    const res = await fetch(SHEET_SCRIPT_URL);
-    const rows = await res.json();
+    const rows = await jsonp(SHEET_SCRIPT_URL);
     entries = rows
       .filter(r => r.category !== 'Sin categorizar') // esas van aparte, en pendientes
       .map(r => ({
@@ -351,8 +370,7 @@ async function loadEntriesFromSheet(){
 // ---------- PENDING (por categorizar) ----------
 async function loadPending(){
   try{
-    const res = await fetch(SHEET_SCRIPT_URL + '?pending=true');
-    const pendientes = await res.json();
+    const pendientes = await jsonp(SHEET_SCRIPT_URL + '?pending=true');
     renderPending(pendientes);
   }catch(err){
     console.error('No se pudo cargar pendientes:', err);
