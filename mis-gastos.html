@@ -158,8 +158,6 @@
       </div>
     </div>
 
-    <div id="pendingWrap"></div>
-
     <div class="mv-table" id="mvTable">
       <div class="mv-head"><span>Monto</span><span>Tipo</span><span>Categoría</span><span></span></div>
       <div id="mvRows"><div class="empty">Todavía no registras nada</div></div>
@@ -349,7 +347,6 @@ async function loadEntriesFromSheet(){
   try{
     const rows = await jsonp(SHEET_SCRIPT_URL);
     entries = rows
-      .filter(r => r.category !== 'Sin categorizar')
       .map(r => ({
         id: r.id || (r.date + r.amount + r.category),
         type: r.type, amount: parseFloat(r.amount), category: r.category,
@@ -365,38 +362,6 @@ async function loadEntriesFromSheet(){
     setSyncStatus('sin conexión (mostrando último guardado)');
   }
   renderAll();
-}
-
-// ---------- PENDING ----------
-async function loadPending(){
-  try{
-    const pendientes = await jsonp(SHEET_SCRIPT_URL + '?pending=true');
-    renderPending(pendientes);
-  }catch(err){ console.error('No se pudo cargar pendientes:', err); }
-}
-function renderPending(pendientes){
-  const wrap = document.getElementById('pendingWrap');
-  if(!pendientes || pendientes.length === 0){ wrap.innerHTML = ''; return; }
-  wrap.innerHTML = '<div class="section-label" style="margin-top:0">Por categorizar</div>' +
-    pendientes.map(p => `
-      <div class="pending-card">
-        <div class="top">
-          <span style="font-size:12px;color:var(--ink-dim)">${p.method || 'Sin método'} · ${p.company || p.note || ''}</span>
-          <span class="mv-amt gasto">S/ ${parseFloat(p.amount).toFixed(2)}</span>
-        </div>
-        <div class="chips">
-          ${CATS_GASTO.map(c => `<button class="chip" onclick="categorizePending('${p.id}','${c}')">${c}</button>`).join('')}
-        </div>
-      </div>
-    `).join('');
-}
-async function categorizePending(id, category){
-  try{
-    await fetch(SHEET_SCRIPT_URL, { method:"POST", mode:"no-cors", headers:{"Content-Type":"text/plain"},
-      body: JSON.stringify({ action:"updateCategory", id, category }) });
-    showToast('Categorizado ✓');
-    setTimeout(()=>{ loadPending(); loadEntriesFromSheet(); }, 900);
-  }catch(err){ console.error('Error al categorizar:', err); }
 }
 
 // ---------- EDIT FIELD INLINE (método / categoría) ----------
@@ -519,11 +484,13 @@ function renderMovimientos(){
       <select class="mv-select" onchange="updateEntryField('${e.id}','method',this.value)">
         ${METHODS.map(m=>`<option value="${m}" ${e.method===m?'selected':''}>${m}</option>`).join('')}
       </select>` : `<span class="mv-select">Ingreso</span>`;
+    const needsCat = !catOptions.includes(e.category);
     return `
       <div class="mv-row">
         <span class="mv-amt ${e.type}">${e.type==='gasto'?'−':'+'} S/${e.amount.toFixed(2)}</span>
         <div class="mv-method"><span class="mv-icon">${METHOD_ICONS[e.method] || '•'}</span>${methodSelect}</div>
-        <select class="mv-select cat-select" onchange="updateEntryField('${e.id}','category',this.value)">
+        <select class="mv-select cat-select" style="${needsCat ? 'color:var(--expense);font-weight:700;' : ''}" onchange="updateEntryField('${e.id}','category',this.value)">
+          ${needsCat ? `<option value="Sin categorizar" selected>Sin categorizar</option>` : ''}
           ${catOptions.map(c=>`<option value="${c}" ${e.category===c?'selected':''}>${c}</option>`).join('')}
         </select>
         <button class="mv-menu-btn" onclick="deleteEntry('${e.id}')">✕</button>
@@ -553,8 +520,7 @@ function renderAll(){
 // ---------- INIT ----------
 loadCardDates();
 loadEntriesFromSheet();
-loadPending();
-setInterval(()=>{ loadEntriesFromSheet(); loadPending(); }, 60000);
+setInterval(loadEntriesFromSheet, 60000);
 </script>
 </body>
 </html>
