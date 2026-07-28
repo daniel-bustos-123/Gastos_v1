@@ -244,7 +244,7 @@
 
 <div class="toast" id="toast">Guardado ✓</div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chart.js/4.4.4/chart.umd.min.js"></script>
 <script>
 const SHEET_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzEknrjaNQGpLESbRbb-HQG6KnHLCiqulVtDiSusD6TGxoGc3jgXTci4OXm5a_BDlIr/exec";
 
@@ -514,13 +514,15 @@ function renderMovimientos(){
       <select class="mv-select" onchange="updateEntryField('${e.id}','method',this.value)">
         ${METHODS.map(m=>`<option value="${m}" ${e.method===m?'selected':''}>${m}</option>`).join('')}
       </select>` : `<span class="mv-select">Ingreso</span>`;
-    const needsCat = !catOptions.includes(e.category);
+    const isPending = e.category === 'Sin categorizar';
+    const customCat = (!catOptions.includes(e.category) && !isPending) ? e.category : null;
     return `
       <div class="mv-row">
         <span class="mv-amt ${e.type}">${e.type==='gasto'?'−':'+'} S/${e.amount.toFixed(2)}</span>
         <div class="mv-method"><span class="mv-icon">${METHOD_ICONS[e.method] || '•'}</span>${methodSelect}</div>
-        <select class="mv-select cat-select" style="${needsCat ? 'color:var(--expense);font-weight:700;' : ''}" onchange="updateEntryField('${e.id}','category',this.value)">
-          ${needsCat ? `<option value="Sin categorizar" selected>Sin categorizar</option>` : ''}
+        <select class="mv-select cat-select" style="${isPending ? 'color:var(--expense);font-weight:700;' : ''}" onchange="handleCategoryChange('${e.id}', this)">
+          ${isPending ? `<option value="Sin categorizar" selected>Sin categorizar</option>` : ''}
+          ${customCat ? `<option value="${customCat}" selected>${customCat}</option>` : ''}
           ${catOptions.map(c=>`<option value="${c}" ${e.category===c?'selected':''}>${c}</option>`).join('')}
         </select>
         <button class="mv-menu-btn" onclick="deleteEntry('${e.id}')">✕</button>
@@ -607,6 +609,18 @@ function renderGraficos(){
       y:{ticks:{color:'#EDEFF5',font:{size:10}}, grid:{display:false}}
     }}
   });
+}
+
+async function handleCategoryChange(id, selectEl){
+  let value = selectEl.value;
+  if(value === 'Otro'){
+    const custom = prompt('¿Qué fue este gasto exactamente?');
+    if(custom && custom.trim()){
+      value = custom.trim();
+    }
+  }
+  await updateEntryField(id, 'category', value);
+  renderMovimientos();
 }
 
 async function deleteEntry(id){
