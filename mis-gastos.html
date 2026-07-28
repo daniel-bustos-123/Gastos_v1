@@ -166,7 +166,32 @@
 
   <!-- VIEW: GRÁFICOS -->
   <div class="view" id="view-graficos">
-    <div class="placeholder">Los gráficos los armamos en el siguiente paso.<br><br>Tus datos ya se están guardando bien en el Sheet.</div>
+    <div class="filter-bar">
+      <div class="seg">
+        <label>Mes</label>
+        <select id="chartMonth" onchange="renderGraficos()"></select>
+      </div>
+    </div>
+
+    <div class="summary-card">
+      <div class="section-label" style="margin-top:0">Por categoría</div>
+      <canvas id="chartCategoria" height="220"></canvas>
+    </div>
+
+    <div class="summary-card">
+      <div class="section-label" style="margin-top:0">Por método de pago</div>
+      <canvas id="chartMetodo" height="180"></canvas>
+    </div>
+
+    <div class="summary-card">
+      <div class="section-label" style="margin-top:0">Tendencia diaria</div>
+      <canvas id="chartTendencia" height="180"></canvas>
+    </div>
+
+    <div class="summary-card">
+      <div class="section-label" style="margin-top:0">Lugares donde más gastas</div>
+      <canvas id="chartEmpresa" height="200"></canvas>
+    </div>
   </div>
 
   <!-- VIEW: FECHAS DE PAGO -->
@@ -219,13 +244,14 @@
 
 <div class="toast" id="toast">Guardado ✓</div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <script>
 const SHEET_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzEknrjaNQGpLESbRbb-HQG6KnHLCiqulVtDiSusD6TGxoGc3jgXTci4OXm5a_BDlIr/exec";
 
-const CATS_GASTO = ["Inglés","Internet","Apoyo casa","Comida","Transporte","Otro"];
+const CATS_GASTO = ["Comida familiar","Comida rápida","Antojos/Snacks","Alcohol","Mercado/Abarrotes","Apoyo casa","Transporte","Taxi","Salud","Inglés","Internet","Otro"];
 const CATS_INGRESO = ["Depósito sobrinos","Otro ingreso"];
 const METHODS = ["Efectivo","Yape","Tarjeta débito","Tarjeta de crédito"];
-const METHOD_ICONS = {"Efectivo":"$","Yape":"Y","Tarjeta débito":"▭","Tarjeta de crédito":"▭","Retiro efectivo":"⛁","Sin identificar":"?"};
+const METHOD_ICONS = {"Efectivo":"$","Yape":"Y","Tarjeta débito":"▭","Tarjeta de crédito":"▭","Sin identificar":"?"};
 
 let currentType = "gasto";
 let currentAmount = "0";
@@ -240,6 +266,7 @@ function switchView(name){
   document.querySelectorAll('.tabbar button').forEach(b => b.classList.remove('active'));
   document.getElementById('view-' + name).classList.add('active');
   document.getElementById('tab' + name.charAt(0).toUpperCase() + name.slice(1) + 'Btn').classList.add('active');
+  if(name === 'graficos') setTimeout(renderGraficos, 50);
 }
 
 // ---------- MODAL ----------
@@ -250,6 +277,7 @@ function closeModal(){ document.getElementById('modalOverlay').classList.remove(
 const amountDisplay = document.getElementById('amountDisplay');
 const dateInput = document.getElementById('dateInput');
 const noteInput = document.getElementById('noteInput');
+noteInput.addEventListener('input', updateSubmitState);
 const submitBtn = document.getElementById('submitBtn');
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 dateInput.value = todayStr();
@@ -318,7 +346,9 @@ function renderMethodChips(){
 }
 function updateSubmitState(){
   const amt = parseFloat(currentAmount);
-  submitBtn.disabled = !(amt > 0 && selectedCat);
+  const needsNote = selectedCat === 'Otro' && noteInput.value.trim() === '';
+  submitBtn.disabled = !(amt > 0 && selectedCat) || needsNote;
+  noteInput.placeholder = selectedCat === 'Otro' ? 'Obligatorio: ¿qué fue este gasto?' : 'ej. curso de inglés julio';
 }
 updateSubmitState();
 
@@ -499,6 +529,86 @@ function renderMovimientos(){
   }).join('');
 }
 
+// ---------- GRÁFICOS ----------
+let chartInstances = {};
+const CHART_COLORS = ['#2F6FED','#34C77B','#E5544A','#F2B84B','#9B6FED','#4BD1E5','#EA6FA6','#7B8399'];
+
+function destroyChart(key){ if(chartInstances[key]){ chartInstances[key].destroy(); delete chartInstances[key]; } }
+
+function populateChartMonthFilter(){
+  const sel = document.getElementById('chartMonth');
+  if(!sel) return;
+  const prevValue = sel.value;
+  const months = [...new Set(entries.map(e=>e.date.slice(0,7)))].sort().reverse();
+  sel.innerHTML = '<option value="">Todo el histórico</option>' + months.map(m=>{
+    const label = new Date(m+'-02').toLocaleDateString('es-PE',{month:'long',year:'numeric'});
+    return `<option value="${m}">${label}</option>`;
+  }).join('');
+  if(months.includes(prevValue)) sel.value = prevValue;
+  else if(months.length) sel.value = months[0]; // default: mes más reciente
+}
+
+function renderGraficos(){
+  if(typeof Chart === 'undefined') return; // librería aún no cargó
+  const monthFilter = document.getElementById('chartMonth').value;
+  let gastos = entries.filter(e => e.type === 'gasto');
+  if(monthFilter) gastos = gastos.filter(e => e.date.startsWith(monthFilter));
+
+  // 1. Por categoría (dona)
+  const byCat = {};
+  gastos.forEach(e => { byCat[e.category] = (byCat[e.category]||0) + e.amount; });
+  const catLabels = Object.keys(byCat).sort((a,b)=>byCat[b]-byCat[a]);
+  destroyChart('categoria');
+  chartInstances.categoria = new Chart(document.getElementById('chartCategoria'), {
+    type: 'doughnut',
+    data: { labels: catLabels, datasets: [{ data: catLabels.map(c=>byCat[c]), backgroundColor: CHART_COLORS, borderWidth: 0 }] },
+    options: { plugins: { legend: { position: 'bottom', labels: { color: '#EDEFF5', font:{size:11}, boxWidth:12 } } } }
+  });
+
+  // 2. Por método (barras)
+  const byMethod = {};
+  gastos.forEach(e => { const m = e.method || 'Sin identificar'; byMethod[m] = (byMethod[m]||0) + e.amount; });
+  const methodLabels = Object.keys(byMethod);
+  destroyChart('metodo');
+  chartInstances.metodo = new Chart(document.getElementById('chartMetodo'), {
+    type: 'bar',
+    data: { labels: methodLabels, datasets: [{ data: methodLabels.map(m=>byMethod[m]), backgroundColor: '#2F6FED', borderRadius: 6 }] },
+    options: { plugins:{legend:{display:false}}, scales:{
+      x:{ticks:{color:'#7B8399',font:{size:10}}, grid:{display:false}},
+      y:{ticks:{color:'#7B8399',font:{size:10}}, grid:{color:'#262B3B'}}
+    }}
+  });
+
+  // 3. Tendencia diaria
+  const byDate = {};
+  gastos.forEach(e => { byDate[e.date] = (byDate[e.date]||0) + e.amount; });
+  const dateLabels = Object.keys(byDate).sort();
+  const dateLabelsShort = dateLabels.map(d => new Date(d+'T00:00:00').toLocaleDateString('es-PE',{day:'2-digit',month:'short'}));
+  destroyChart('tendencia');
+  chartInstances.tendencia = new Chart(document.getElementById('chartTendencia'), {
+    type: 'line',
+    data: { labels: dateLabelsShort, datasets: [{ data: dateLabels.map(d=>byDate[d]), borderColor: '#E5544A', backgroundColor: 'rgba(229,84,74,.15)', fill:true, tension:.3, pointRadius:3 }] },
+    options: { plugins:{legend:{display:false}}, scales:{
+      x:{ticks:{color:'#7B8399',font:{size:9}}, grid:{display:false}},
+      y:{ticks:{color:'#7B8399',font:{size:10}}, grid:{color:'#262B3B'}}
+    }}
+  });
+
+  // 4. Por empresa (top 8)
+  const byCompany = {};
+  gastos.forEach(e => { const c = e.company || 'Sin especificar'; byCompany[c] = (byCompany[c]||0) + e.amount; });
+  const companyLabels = Object.keys(byCompany).sort((a,b)=>byCompany[b]-byCompany[a]).slice(0,8);
+  destroyChart('empresa');
+  chartInstances.empresa = new Chart(document.getElementById('chartEmpresa'), {
+    type: 'bar',
+    data: { labels: companyLabels, datasets: [{ data: companyLabels.map(c=>byCompany[c]), backgroundColor: '#F2B84B', borderRadius: 6 }] },
+    options: { indexAxis: 'y', plugins:{legend:{display:false}}, scales:{
+      x:{ticks:{color:'#7B8399',font:{size:10}}, grid:{color:'#262B3B'}},
+      y:{ticks:{color:'#EDEFF5',font:{size:10}}, grid:{display:false}}
+    }}
+  });
+}
+
 async function deleteEntry(id){
   entries = entries.filter(e=>e.id!==id);
   localStorage.setItem('mis-gastos-entries-cache', JSON.stringify(entries));
@@ -515,6 +625,8 @@ function renderAll(){
   populateFilters();
   renderMovimientos();
   renderCardSummary();
+  populateChartMonthFilter();
+  renderGraficos();
 }
 
 // ---------- INIT ----------
