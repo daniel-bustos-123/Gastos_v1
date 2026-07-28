@@ -159,7 +159,7 @@
     </div>
 
     <div class="mv-table" id="mvTable">
-      <div class="mv-head"><span>Monto</span><span>Tipo</span><span>Categoría</span><span></span></div>
+      <div class="mv-head"><span>Monto</span><span>Método</span><span>Categoría</span><span></span></div>
       <div id="mvRows"><div class="empty">Todavía no registras nada</div></div>
     </div>
   </div>
@@ -494,7 +494,7 @@ function renderMovimientos(){
           ${catOptions.map(c=>`<option value="${c}" ${e.category===c?'selected':''}>${c}</option>`).join('')}
         </select>
         <button class="mv-menu-btn" onclick="deleteEntry('${e.id}')">✕</button>
-        <div class="mv-meta">${dateShort}${e.company ? ' · ' + e.company : (e.note ? ' · ' + e.note : '')}</div>
+        <div class="mv-meta">${dateShort}${e.company ? ' · ' + e.company : ''}${e.note ? ' · ' + e.note : ''}</div>
       </div>`;
   }).join('');
 }
