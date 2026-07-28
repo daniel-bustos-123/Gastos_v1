@@ -42,6 +42,7 @@
   }
   .pill-toggle button.active{background:var(--accent); border-color:var(--accent); color:#fff;
     box-shadow: 0 0 0 4px var(--accent-soft);}
+  .pill-toggle.sm button{padding:10px 4px; font-size:12px;}
 
   /* Filter bar */
   .filter-bar{
@@ -166,6 +167,11 @@
 
   <!-- VIEW: GRÁFICOS -->
   <div class="view" id="view-graficos">
+    <div class="pill-toggle sm" style="margin-bottom:10px;">
+      <button class="active" id="chartFilterTodos" onclick="setChartMethodFilter('todos')">Todos</button>
+      <button id="chartFilterCredito" onclick="setChartMethodFilter('credito')">Crédito</button>
+      <button id="chartFilterDebito" onclick="setChartMethodFilter('debito')">Débito y Yape</button>
+    </div>
     <div class="filter-bar">
       <div class="seg">
         <label>Mes</label>
@@ -197,12 +203,7 @@
   <!-- VIEW: FECHAS DE PAGO -->
   <div class="view" id="view-fechas">
     <div class="summary-card">
-      <div class="section-label" style="margin-top:0">Tarjeta de crédito</div>
-      <div class="card-dates">
-        <div class="card-date-field"><label>Día de corte</label><input type="number" id="cutoffDay" min="1" max="31" placeholder="ej. 20"></div>
-        <div class="card-date-field"><label>Día de pago</label><input type="number" id="paymentDay" min="1" max="31" placeholder="ej. 5"></div>
-      </div>
-      <button class="btn secondary" onclick="saveCardDates()">Guardar fechas</button>
+      <div class="section-label" style="margin-top:0">Ciclo actual — Tarjeta de crédito</div>
       <div id="cardSummary"></div>
     </div>
     <div class="section-label">Gastos con tarjeta este ciclo</div>
@@ -428,48 +429,49 @@ async function saveEntry(){
   setTimeout(loadEntriesFromSheet, 1200);
 }
 
-// ---------- CREDIT CARD (Fechas de Pago) ----------
-function loadCardDates(){
-  const cutoff = localStorage.getItem('cardCutoffDay');
-  const payment = localStorage.getItem('cardPaymentDay');
-  if(cutoff) document.getElementById('cutoffDay').value = cutoff;
-  if(payment) document.getElementById('paymentDay').value = payment;
+// ---------- CREDIT CARD (Fechas de Pago) — cronograma real BCP 2026 ----------
+const BCP_CALENDAR_2026 = [
+  { desde:"2025-12-25", hasta:"2026-01-23", pago:"2026-02-23" },
+  { desde:"2026-01-24", hasta:"2026-02-25", pago:"2026-03-23" },
+  { desde:"2026-02-26", hasta:"2026-03-25", pago:"2026-04-21" },
+  { desde:"2026-03-26", hasta:"2026-04-24", pago:"2026-05-20" },
+  { desde:"2026-04-25", hasta:"2026-05-25", pago:"2026-06-22" },
+  { desde:"2026-05-26", hasta:"2026-06-25", pago:"2026-07-21" },
+  { desde:"2026-06-26", hasta:"2026-07-24", pago:"2026-08-20" },
+  { desde:"2026-07-25", hasta:"2026-08-25", pago:"2026-09-22" },
+  { desde:"2026-08-26", hasta:"2026-09-25", pago:"2026-10-20" },
+  { desde:"2026-09-26", hasta:"2026-10-23", pago:"2026-11-23" },
+  { desde:"2026-10-24", hasta:"2026-11-25", pago:"2026-12-22" },
+  { desde:"2026-11-26", hasta:"2026-12-24", pago:"2027-01-20" }
+];
+function findCurrentCycle(todayStr){
+  return BCP_CALENDAR_2026.find(c => todayStr >= c.desde && todayStr <= c.hasta) || BCP_CALENDAR_2026[BCP_CALENDAR_2026.length-1];
 }
-function saveCardDates(){
-  const cutoff = document.getElementById('cutoffDay').value;
-  const payment = document.getElementById('paymentDay').value;
-  if(cutoff) localStorage.setItem('cardCutoffDay', cutoff);
-  if(payment) localStorage.setItem('cardPaymentDay', payment);
-  showToast('Fechas guardadas ✓');
-  renderCardSummary();
+function daysUntilStr(dateStr, fromDate){
+  const target = new Date(dateStr + 'T00:00:00');
+  return Math.ceil((target - fromDate) / 86400000);
 }
-function nextDateForDay(day, from){ let d = new Date(from.getFullYear(), from.getMonth(), day); if(d < from) d.setMonth(d.getMonth()+1); return d; }
-function prevOrTodayDateForDay(day, from){ let d = new Date(from.getFullYear(), from.getMonth(), day); if(d > from) d.setMonth(d.getMonth()-1); return d; }
-function daysUntil(target, from){ return Math.ceil((target - from) / 86400000); }
-function toDateStr(d){ return d.toISOString().slice(0,10); }
 function renderCardSummary(){
-  const cutoffDay = parseInt(localStorage.getItem('cardCutoffDay'));
   const summaryEl = document.getElementById('cardSummary');
-  if(!cutoffDay){ summaryEl.innerHTML = ''; document.getElementById('cardHistoryList').innerHTML = '<div class="empty">Configura tu día de corte primero</div>'; return; }
   const today = new Date(); today.setHours(0,0,0,0);
-  const cycleStart = prevOrTodayDateForDay(cutoffDay, today);
-  const nextCutoff = nextDateForDay(cutoffDay, today);
-  const cycleStartStr = toDateStr(cycleStart);
-  const cardEntries = entries.filter(e => e.type==='gasto' && e.method==='Tarjeta de crédito' && e.date >= cycleStartStr);
+  const todayStr = toDateStr2(today);
+  const cycle = findCurrentCycle(todayStr);
+
+  const cardEntries = entries.filter(e => e.type==='gasto' && e.method==='Tarjeta de crédito' && e.date >= cycle.desde && e.date <= cycle.hasta);
   const cardTotal = cardEntries.reduce((s,e)=>s+e.amount, 0);
-  let paymentHtml = '';
-  const paymentDay = parseInt(localStorage.getItem('cardPaymentDay'));
-  if(paymentDay){
-    const daysToPay = daysUntil(nextDateForDay(paymentDay, today), today);
-    paymentHtml = `<div><span>Próximo pago en</span><span class="num">${daysToPay} días</span></div>`;
-  }
+
+  const daysToCutoff = daysUntilStr(cycle.hasta, today);
+  const daysToPay = daysUntilStr(cycle.pago, today);
+
   summaryEl.innerHTML = `<div class="card-summary-row">
       <div><span>Gastado en este ciclo</span><span class="num">${fmt(cardTotal)}</span></div>
-      <div><span>Corte en</span><span class="num">${daysUntil(nextCutoff, today)} días</span></div>
-      ${paymentHtml}
+      <div><span>Corte (${formatShort(cycle.hasta)})</span><span class="num">${daysToCutoff} días</span></div>
+      <div><span>Pago (${formatShort(cycle.pago)})</span><span class="num">${daysToPay} días</span></div>
     </div>`;
   renderCardHistory(cardEntries);
 }
+function toDateStr2(d){ return d.toISOString().slice(0,10); }
+function formatShort(dateStr){ return new Date(dateStr+'T00:00:00').toLocaleDateString('es-PE',{day:'2-digit',month:'short'}); }
 function renderCardHistory(cardEntries){
   const el = document.getElementById('cardHistoryList');
   if(!cardEntries.length){ el.innerHTML = '<div class="empty">No hay gastos con tarjeta aún</div>'; return; }
@@ -533,9 +535,18 @@ function renderMovimientos(){
 
 // ---------- GRÁFICOS ----------
 let chartInstances = {};
+let chartMethodFilter = 'todos';
 const CHART_COLORS = ['#2F6FED','#34C77B','#E5544A','#F2B84B','#9B6FED','#4BD1E5','#EA6FA6','#7B8399'];
 
 function destroyChart(key){ if(chartInstances[key]){ chartInstances[key].destroy(); delete chartInstances[key]; } }
+
+function setChartMethodFilter(filter){
+  chartMethodFilter = filter;
+  document.getElementById('chartFilterTodos').classList.toggle('active', filter==='todos');
+  document.getElementById('chartFilterCredito').classList.toggle('active', filter==='credito');
+  document.getElementById('chartFilterDebito').classList.toggle('active', filter==='debito');
+  renderGraficos();
+}
 
 function populateChartMonthFilter(){
   const sel = document.getElementById('chartMonth');
@@ -555,6 +566,8 @@ function renderGraficos(){
   const monthFilter = document.getElementById('chartMonth').value;
   let gastos = entries.filter(e => e.type === 'gasto');
   if(monthFilter) gastos = gastos.filter(e => e.date.startsWith(monthFilter));
+  if(chartMethodFilter === 'credito') gastos = gastos.filter(e => e.method === 'Tarjeta de crédito');
+  else if(chartMethodFilter === 'debito') gastos = gastos.filter(e => e.method !== 'Tarjeta de crédito');
 
   // 1. Por categoría (dona)
   const byCat = {};
@@ -644,7 +657,6 @@ function renderAll(){
 }
 
 // ---------- INIT ----------
-loadCardDates();
 loadEntriesFromSheet();
 setInterval(loadEntriesFromSheet, 60000);
 </script>
