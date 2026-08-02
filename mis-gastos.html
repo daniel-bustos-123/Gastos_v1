@@ -471,13 +471,22 @@ function renderCardSummary(){
   renderCardHistory(cardEntries);
 }
 function toDateStr2(d){ return d.toISOString().slice(0,10); }
+function escapeHtml(str){
+  if(str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 function formatShort(dateStr){ return new Date(dateStr+'T00:00:00').toLocaleDateString('es-PE',{day:'2-digit',month:'short'}); }
 function renderCardHistory(cardEntries){
   const el = document.getElementById('cardHistoryList');
   if(!cardEntries.length){ el.innerHTML = '<div class="empty">No hay gastos con tarjeta aún</div>'; return; }
   el.innerHTML = cardEntries.slice(0,30).map(e=>{
     const dateShort = new Date(e.date + 'T00:00:00').toLocaleDateString('es-PE',{day:'2-digit',month:'short'});
-    return `<div class="mv-row" style="grid-template-columns:1fr 2fr;"><span class="mv-amt gasto">− ${fmt(e.amount)}</span><span style="font-size:12px;color:var(--ink-dim)">${e.category} · ${dateShort}${e.company ? ' · ' + e.company : ''}</span></div>`;
+    return `<div class="mv-row" style="grid-template-columns:1fr 2fr;"><span class="mv-amt gasto">− ${fmt(e.amount)}</span><span style="font-size:12px;color:var(--ink-dim)">${escapeHtml(e.category)} · ${dateShort}${e.company ? ' · ' + escapeHtml(e.company) : ''}</span></div>`;
   }).join('');
 }
 
@@ -524,11 +533,11 @@ function renderMovimientos(){
         <div class="mv-method"><span class="mv-icon">${METHOD_ICONS[e.method] || '•'}</span>${methodSelect}</div>
         <select class="mv-select cat-select" style="${isPending ? 'color:var(--expense);font-weight:700;' : ''}" onchange="handleCategoryChange('${e.id}', this)">
           ${isPending ? `<option value="Sin categorizar" selected>Sin categorizar</option>` : ''}
-          ${customCat ? `<option value="${customCat}" selected>${customCat}</option>` : ''}
+          ${customCat ? `<option value="${escapeHtml(customCat)}" selected>${escapeHtml(customCat)}</option>` : ''}
           ${catOptions.map(c=>`<option value="${c}" ${e.category===c?'selected':''}>${c}</option>`).join('')}
         </select>
         <button class="mv-menu-btn" onclick="deleteEntry('${e.id}')">✕</button>
-        <div class="mv-meta">${dateShort}${e.company ? ' · ' + e.company : ''}${e.note ? ' · ' + e.note : ''}</div>
+        <div class="mv-meta">${dateShort}${e.company ? ' · ' + escapeHtml(e.company) : ''}${e.note ? ' · ' + escapeHtml(e.note) : ''}</div>
       </div>`;
   }).join('');
 }
