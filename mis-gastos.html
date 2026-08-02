@@ -398,7 +398,7 @@ async function loadEntriesFromSheet(){
 // ---------- EDIT FIELD INLINE (método / categoría) ----------
 async function updateEntryField(id, field, value){
   try{
-    await fetch(SHEET_SCRIPT_URL, { method:"POST", mode:"no-cors", headers:{"Content-Type":"text/plain"},
+    await fetch(SHEET_SCRIPT_URL, { method:"POST", mode:"no-cors", credentials:"include", headers:{"Content-Type":"text/plain"},
       body: JSON.stringify({ action:"updateField", id, field, value }) });
     const e = entries.find(x=>x.id===id);
     if(e){ if(field==='category') e.category = value; if(field==='method') e.method = value; }
@@ -409,7 +409,7 @@ async function updateEntryField(id, field, value){
 
 // ---------- SAVE NEW ENTRY ----------
 function syncToSheet(entry){
-  fetch(SHEET_SCRIPT_URL, { method:"POST", mode:"no-cors", headers:{"Content-Type":"text/plain"}, body: JSON.stringify(entry) })
+  fetch(SHEET_SCRIPT_URL, { method:"POST", mode:"no-cors", credentials:"include", headers:{"Content-Type":"text/plain"}, body: JSON.stringify(entry) })
     .catch(err => console.error("No se pudo sincronizar con Sheets:", err));
 }
 async function saveEntry(){
