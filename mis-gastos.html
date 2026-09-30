@@ -130,7 +130,20 @@
 
   .pending-card{border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:10px; background:var(--paper);}
   .pending-card .top{display:flex; justify-content:space-between; margin-bottom:8px;}
-
+  .cycle-card{background:var(--paper); border:1px solid var(--line); border-radius:12px; margin-bottom:10px; overflow:hidden;}
+  .cycle-card summary{list-style:none; cursor:pointer; padding:14px; display:flex; justify-content:space-between; align-items:center; gap:8px;}
+  .cycle-card summary::-webkit-details-marker{display:none;}
+  .cycle-range{font-size:13px; font-weight:600;}
+  .cycle-sub{font-size:11px; color:var(--ink-dim); margin-top:3px; font-family:var(--mono);}
+  .cycle-total{font-family:var(--mono); font-weight:700; font-size:15px; color:var(--accent); text-align:right;}
+  .badge{display:inline-block; font-size:10px; font-weight:700; padding:2px 8px; border-radius:20px; margin-top:4px; font-family:var(--mono);}
+  .badge.pagado{background:rgba(52,199,123,.15); color:var(--income);}
+  .badge.curso{background:var(--accent-soft); color:var(--accent);}
+  .badge.pendiente{background:rgba(229,84,74,.15); color:var(--expense);}
+  .cycle-items{border-top:1px solid var(--line);}
+  .cycle-item{display:flex; justify-content:space-between; gap:10px; padding:10px 14px; border-bottom:1px solid var(--line); font-size:12px;}
+  .cycle-item:last-child{border-bottom:none;}
+  .cycle-item .d{color:var(--ink-dim); font-size:11px;}
   .toast{position:fixed; bottom:90px; left:50%; transform:translateX(-50%); background:var(--accent); color:#fff; padding:10px 20px; border-radius:10px; font-size:13px; font-weight:700; opacity:0; transition:opacity .25s; pointer-events:none; z-index:30;}
   .toast.show{opacity:1;}
 </style>
@@ -208,6 +221,8 @@
     </div>
     <div class="section-label">Gastos con tarjeta este ciclo</div>
     <div id="cardHistoryList"><div class="empty">No hay gastos con tarjeta aún</div></div>
+    <div class="section-label">Histórico por ciclo</div>
+    <div id="cycleHistoryList"><div class="empty">Sin ciclos con gastos de tarjeta</div></div>
   </div>
 </div>
 
@@ -469,6 +484,8 @@ function renderCardSummary(){
       <div><span>Pago (${formatShort(cycle.pago)})</span><span class="num">${daysToPay} días</span></div>
     </div>`;
   renderCardHistory(cardEntries);
+  
+  renderCycleHistory();
 }
 function toDateStr2(d){ return d.toISOString().slice(0,10); }
 function escapeHtml(str){
@@ -489,7 +506,48 @@ function renderCardHistory(cardEntries){
     return `<div class="mv-row" style="grid-template-columns:1fr 2fr;"><span class="mv-amt gasto">− ${fmt(e.amount)}</span><span style="font-size:12px;color:var(--ink-dim)">${escapeHtml(e.category)} · ${dateShort}${e.company ? ' · ' + escapeHtml(e.company) : ''}</span></div>`;
   }).join('');
 }
+function renderCycleHistory(){
+  const el = document.getElementById('cycleHistoryList');
+  if(!el) return;
+  const todayS = toDateStr2(new Date());
+  const cardAll = entries.filter(e => e.type==='gasto' && e.method==='Tarjeta de crédito');
 
+  const cycles = BCP_CALENDAR_2026
+    .map(c => ({ ...c, items: cardAll.filter(e => e.date >= c.desde && e.date <= c.hasta) }))
+    .filter(c => c.items.length)   // solo ciclos con registros
+    .reverse();                    // más reciente primero
+
+  if(!cycles.length){ el.innerHTML = '<div class="empty">Sin ciclos con gastos de tarjeta</div>'; return; }
+
+  el.innerHTML = cycles.map(c => {
+    const total = c.items.reduce((s,e) => s + e.amount, 0);
+    const enCurso = todayS >= c.desde && todayS <= c.hasta;
+    const pagado = todayS > c.pago;
+    const badge = enCurso ? '<span class="badge curso">En curso</span>'
+                : pagado  ? '<span class="badge pagado">Pagado</span>'
+                          : '<span class="badge pendiente">Por pagar</span>';
+    const rows = c.items.map(e => `
+      <div class="cycle-item">
+        <div>
+          <div>${escapeHtml(e.category)}${e.company ? ' · ' + escapeHtml(e.company) : ''}</div>
+          <div class="d">${formatShort(e.date)}${e.note ? ' · ' + escapeHtml(e.note) : ''}</div>
+        </div>
+        <span class="mv-amt gasto">− ${fmt(e.amount)}</span>
+      </div>`).join('');
+    return `
+      <details class="cycle-card" ${enCurso ? 'open' : ''}>
+        <summary>
+          <div>
+            <div class="cycle-range">${formatShort(c.desde)} → ${formatShort(c.hasta)}</div>
+            <div class="cycle-sub">Pago: ${formatShort(c.pago)} · ${c.items.length} mov.</div>
+            ${badge}
+          </div>
+          <div class="cycle-total">${fmt(total)}</div>
+        </summary>
+        <div class="cycle-items">${rows}</div>
+      </details>`;
+  }).join('');
+}
 // ---------- MOVIMIENTOS TAB ----------
 function setFilterType(type){
   filterType = type;
